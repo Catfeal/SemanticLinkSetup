@@ -38,6 +38,25 @@ print(LH_Abs_Path)
 
 # CELL ********************
 
+
+%%configure -f
+
+{ 
+        "defaultLakehouse": { 
+            "name":  "Lkh_Testing_FromDifferenetNotebook"
+            }
+    }
+     
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
 lake_path = os.getenv("ABS_LAKE_PATH")
 print(lake_path)
 

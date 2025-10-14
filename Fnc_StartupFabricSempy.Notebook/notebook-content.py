@@ -18,8 +18,8 @@
 # META {
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark",
-# META   "frozen": true,
-# META   "editable": false
+# META   "frozen": false,
+# META   "editable": true
 # META }
 
 # CELL ********************
@@ -38,6 +38,49 @@ from sempy.fabric.exceptions import FabricHTTPException
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType, DateType, TimestampType
 import numpy as np
 import os
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+WS_ID = fabric.get_workspace_id()
+_LH_Name = "Lkh_Test"
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+fnc_SET_PATH_abs_LH(WS_ID, _LH_Name)
+fnc_SET_PATH_LocalMount()
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+
+%%configure -f
+
+{ 
+        "defaultLakehouse": { 
+            "name":  "Lkh_Test"
+            }
+    }
+     
 
 # METADATA ********************
 
@@ -65,8 +108,10 @@ def fnc_startUp(_Tablename: StringType, _LH_Name: StringType, _WS_ID: StringType
 
     fnc_SET_PATH_LocalMount()
 
+    
+
     # Truncate or drop the table to have a clear start to insert into  
-    fnc_TableCheckStartOfRun(_Tablename, 'Truncate',_LH_Name)
+    fnc_TableCheckStartOfRun(_Tablename, 'Truncate')
 
 # METADATA ********************
 
