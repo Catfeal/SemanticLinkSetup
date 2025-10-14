@@ -34,10 +34,7 @@ import pyspark.sql.functions
 from delta.tables import DeltaTable
 from pyspark.sql.functions import lit, current_timestamp
 from datetime import datetime
-from sempy.fabric.exceptions import FabricHTTPException
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType, DateType, TimestampType
-import numpy as np
-import os
 
 # METADATA ********************
 
@@ -48,39 +45,7 @@ import os
 
 # CELL ********************
 
-WS_ID = fabric.get_workspace_id()
-_LH_Name = "Lkh_Test"
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
-# CELL ********************
-
-fnc_SET_PATH_abs_LH(WS_ID, _LH_Name)
-fnc_SET_PATH_LocalMount()
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
-# CELL ********************
-
-
-%%configure -f
-
-{ 
-        "defaultLakehouse": { 
-            "name":  "Lkh_Test"
-            }
-    }
-     
+prm_starttime = datetime.utcnow()
 
 # METADATA ********************
 
@@ -95,23 +60,35 @@ fnc_SET_PATH_LocalMount()
 
 # CELL ********************
 
-def fnc_startUp(_Tablename: StringType, _LH_Name: StringType, _WS_ID: StringType):
+def fnc_startUp(_Tablename: StringType):
     """
-    This function will do all the initial setups for the Semantic link flow
-
-    - Check for lakehouse and create if necessary
-
-    - check for table in that lakehouse and truncate or drop 
+    Parameters:
+        _Tablename = he name of the table you want to use in this part of the code
+    Actions in the function
+        - check if it exists and truncate/drop if it does
+        - Create the notebookrefresh table so we can build our history for that
+        - get the path of the lakehouse 
     """
 
-    fnc_SET_PATH_abs_LH(_WS_ID, _LH_Name)
+    # Define Lakehouse name and description.
+    LH_Name = "SemanticLink_Lakehouse"
+    LH_Name = "Lkh_SemanticLink"
+    LH_desc = "Lakehouse for Power BI usage monitoring"
 
-    fnc_SET_PATH_LocalMount()
-
-    
+    # Setup log table voor refrhes opvolging van de notebooks
+    fnc_NotebookRefreshTableCheck() 
 
     # Truncate or drop the table to have a clear start to insert into  
     fnc_TableCheckStartOfRun(_Tablename, 'Truncate')
+
+    # Mount the Lakehouse for direct file system access
+    lakehouse = mssparkutils.lakehouse.get(LH_Name)
+    mssparkutils.fs.mount(lakehouse.get("properties").get("abfsPath"), f"/{LH_Name}")
+
+    # Retrieve and store local and ABFS paths of the mounted Lakehouse
+    local_path = mssparkutils.fs.getMountPath(f"/{LH_Name}")
+    lh_abfs_path = lakehouse.get("properties").get("abfsPath")
+    return lh_abfs_path
 
 # METADATA ********************
 
@@ -126,40 +103,20 @@ def fnc_startUp(_Tablename: StringType, _LH_Name: StringType, _WS_ID: StringType
 
 # CELL ********************
 
-def fnc_SET_PATH_abs_LH(_WorkspaceID: StringType, _LH_Name: StringType):
+def fnc_TableCheckStartOfRun(_Tablename, _TruncateOrDrop):
     """
-    This function will check if the specified lakehouse exists and create it if not
+    Parameters:
+
+        _Tablename = the table we are going to use
+
+        _TruncateOrDrop = we can drop or Truncate the table, options to provide (Truncate or Drop)
     """
-    Items = fabric.list_items(workspace=_WorkspaceID)
-    FileInWS = Items[(Items['Type'] == 'Lakehouse') & (Items['Display Name'] == _LH_Name)]
-    if(FileInWS.empty):
-        try:
-            lh = fabric.create_lakehouse(display_name=_LH_Name, workspace=_WorkspaceID)
-            print(f"Lakehouse {_LH_Name} with ID {lh} successfully created")
-        except FabricHTTPException as exc:
-            print(f"An error occurred: {exc}")
-    # Mount the Lakehouse for direct file system access
-    lakehouse = mssparkutils.lakehouse.get(_LH_Name)
-    mssparkutils.fs.mount(lakehouse.get("properties").get("abfsPath"), f"/{_LH_Name}")
-    lh_abfs_path = lakehouse.get("properties").get("abfsPath")
-    os.environ["ABS_LAKE_PATH"] = lh_abfs_path
+    if spark.catalog.tableExists(_Tablename):
+        if(_TruncateOrDrop == 'Truncate'):
+            spark.sql(f'TRUNCATE table {_Tablename}')
+        if(_TruncateOrDrop == 'Delete'):
+            spark.sql(f'DROP table {_Tablename}')
 
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
-# CELL ********************
-
-def fnc_SET_PATH_LocalMount():
-    mount_name = '/temp_mnt'
-    base_path = os.getenv("ABS_LAKE_PATH")
-    mssparkutils.fs.mount(base_path, mount_name)
-    mount_points = mssparkutils.fs.mounts()
-    local_path = next((mp["localPath"] for mp in mount_points if mp["mountPoint"] == mount_name), None)
-    os.environ["Mount_LAKE_PATH"] = local_path
 
 # METADATA ********************
 
@@ -256,13 +213,8 @@ def fnc_PrepareColumns(_Columns):
 
 # CELL ********************
 
-def fnc_LognotebookRefresh(workspace_id, _NotebookName: StringType, _StartTime: datetime, _EndTime: datetime):
-    lh_abfs_path = os.getenv("ABS_LAKE_PATH")
-    Table_Name = "refreshTimes_Notebooks"
-    d = spark.createDataFrame([(_NotebookName, _StartTime, _EndTime)],["NotebookName", "StartTime", "EndTime"])
-    print(d)
-    #df = spark.createDataFrame(data=d)
-    d.write.format("delta").mode("append").option("mergeSchema", "true").save(f"{lh_abfs_path}/Tables/{Table_Name}")
+def fnc_LognotebookRefresh(_NotebookName: StringType, _StartTime: datetime, _EndTime: datetime):
+    spark.sql(f"INSERT INTO refreshTimes_Notebooks (NotebookName, StartTime, EndTime) VALUES ('{_NotebookName}', '{_StartTime}', '{_EndTime}')")
 
 # METADATA ********************
 
@@ -273,7 +225,7 @@ def fnc_LognotebookRefresh(workspace_id, _NotebookName: StringType, _StartTime: 
 
 # CELL ********************
 
-def fnc_WriteToTable(_TableDataFrame, lh_abfs_path):
+def fnc_WriteToTable(_TableDataFrame):
     """
     This function accepts a dataframe, changes the column names to something a lakehouse will accept and then save it
     """
