@@ -9,44 +9,6 @@
 # META   "dependencies": {}
 # META }
 
-# MARKDOWN ********************
-
-# get items in current workspace
-
-# CELL ********************
-
-import sempy.fabric as fabric
-notebook_name = 'Nbt_Landing_GetDataflows'
-workspace_id = fabric.get_workspace_id()
-items = fabric.list_items(workspace=workspace_id)
-print(items)
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
-# CELL ********************
-
-currentNotebook = notebookutils.runtime.context['currentNotebookId']
-itemslist = items[(items['Type'] == 'Notebook') & (items['Id'] != currentNotebook)]
-for _, row in itemslist.iterrows():
-    notebookID = row['Id']
-    notebook_name = row['Display Name']
-    if(notebook_name == 'Nbt_Landing_GetDataflows'):
-        print(notebookID, notebook_name)
-        remove_all_lakehouses(notebook_name, workspace_id)
-        add_new_default_notebook(notebook_name, workspace_id, "Lkh_Testing_FromDifferenetNotebook")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
 # CELL ********************
 
 import json
@@ -99,7 +61,58 @@ def add_new_default_notebook(notebook_name, workspaceid, defaultlakehouse):
 
 # CELL ********************
 
-remove_all_lakehouses(notebook_name, workspace_id)
+def createLakehouse(LH_Name):
+    try:
+        notebookutils.lakehouse.create(name = LH_Name)
+    except Exception as ex:
+        print('Lakehouse already exists')
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+def LoopNotebooks(Notebookname = '', New_LH_name = ''):    
+    workspace_id    = fabric.get_workspace_id()    
+    items           = fabric.list_items(workspace=workspace_id) 
+    currentNotebook = notebookutils.runtime.context['currentNotebookId']
+
+    if(Notebookname != ''):
+        itemslist = items[(items['Type'] == 'Notebook') & (items['Id'] != currentNotebook) & (items['Display Name'] == Notebookname)]
+    else:
+        itemslist = items[(items['Type'] == 'Notebook') & (items['Id'] != currentNotebook)]
+
+    for _, row in itemslist.iterrows():
+        notebook_name = row['Display Name']
+        remove_all_lakehouses(notebook_name, workspace_id)
+    
+    if(New_LH_name != ''):
+        createLakehouse(LH_Name=New_LH_name)
+        add_new_default_notebook(notebook_name, workspace_id, New_LH_name)
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+# set variables and load items for this workspace
+import sempy.fabric as fabric
+
+# use '' if you want each notebook to get a new lakehouse
+notebook_name   = 'Nbt_Landing_GetDataflows'
+# use '' if you don't want to add a new lakehouse
+LH_name         = 'TestNewLakehouse'
+
+
+LoopNotebooks(Notebookname = notebook_name, New_LH_name= LH_name)
 
 # METADATA ********************
 
